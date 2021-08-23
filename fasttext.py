@@ -15,7 +15,7 @@ WINDOWS = 10
 # 최소 등장 횟수로 제한
 MIN_COUNT = 30
 # 모델 에포크
-ITERATION = 1000
+EPOCH = 100
 # 병렬처리 워커수
 WORKERS = 16
 # vector float 값은 32
@@ -59,7 +59,6 @@ def get_doc_vector(doc, model=default_model):
 def recommand(user_id):
     sql = "select interest from users where id=%s"
     user_interest = db_execute(sql, [user_id])
-    print(user_interest)
     user_interest = get_doc_vector(tokenizer(user_interest[0]['interest']))
     sql = "select id,vector from diaries"
     result = db_execute(sql)
@@ -67,12 +66,10 @@ def recommand(user_id):
     for doc in result:
         res = {}
         q = np.fromstring(doc['vector'][1:-1], dtype=np.float32, sep=' ')
-        print(q.shape)
         res['similar'] = vec_sim(user_interest, q)
         res['id'] = doc['id']
         similar_res.append(res)
-    print(similar_res)
-
+    return similar_res
 # 다이어리 입력후 벡터 저장
 
 
@@ -83,14 +80,54 @@ def insert_diary_vec(diary_id, title, content):
     sql = "update diaries set vector=%s where id=%s"
     db_execute(sql, (vector, diary_id))
 
+# 추가 학습 단어 corpus 추가
+
+
+def make_corpus(model=default_model):
+    sql = "select title,content from diaries where train=0"
+    res = db_execute(sql)
+
+    print("make corpus...")
+    corpus_list = []
+    if not res:
+        pass
+    else:
+        for doc in res:
+            content = doc['title']+" "+doc['content']
+            corpus = tokenizer(content)
+            corpus_list.append(corpus)
+        sql = "update diaries set train=1 where train=0"
+        db_execute(sql)
+    return corpus_list
+
+
 # 단어 저장
-
-
 def make_tsv(model=default_model, meta_file_tsv=META_FILE_TSV):
+    print("make tsv...")
     with open(meta_file_tsv, 'w', encoding='utf-8') as tsvfile:
         writer = csv.writer(tsvfile, delimiter='\t')
+        words = list(model.wv.index_to_key)
         for word in words:
             writer.writerow([word])
+
+
+def train(corpus, update=False, model=default_model, vec_size=VEC_SIZE, windows=WINDOWS, min_count=MIN_COUNT, epochs=EPOCH,
+          workers=WORKERS):
+    print("Training...")
+    if update:
+        model.build_vocab(corpus, update=update)
+        model.train(corpus, total_examples=len(corpus), epochs=model.epochs)
+    else:
+        corpus = init_vocab_read()
+        model = FastText(vector_size=vec_size,
+                         window=windows,
+                         min_count=min_count,
+                         sentences=corpus,
+                         epochs=EPOCH,
+                         workers=workers)
+    return model
+# test code
+# 처음 학습
 
 
 def first_train():
@@ -101,7 +138,6 @@ def first_train():
     model.save(model_path)
     model.train(words, total_examples=len(words), epochs=10)
 
-# test code
 # 다이어리 벡터 저장하기
 
 
@@ -123,8 +159,7 @@ def insert_all_diary_vec():
     print("=======update all diary=========")
 
 
-# first_train()
 # insert_diary_vec(
 #     2, "오늘은 즐거운 하루", "오늘 길가다가 귀여운 고양이를 봐서 기분이 좋아졌다. 앞으로도 이런 행복한 이들이 나에게도 있었으면 좋겠다 앞으로도 쭈욱욱 아 행복해 일기 일상 여행")
-insert_all_diary_vec()
-recommand(1)
+# insert_all_diary_vec()
+# recommand(1)
