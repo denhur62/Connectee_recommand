@@ -3,14 +3,13 @@ import numpy as np
 from Tokenizer import init_vocab_read
 from numpy.linalg import norm
 from gensim import matutils
-import MySQLdb
 from Tokenizer import tokenizer
 from database import db_execute
-import base64
+import csv
+
 # HyperParameter
 # 벡터 차원 수
-#VEC_SIZE = 30 (희값)
-VEC_SIZE = 100
+VEC_SIZE = 30
 # 연관 지을 윈도우 사이즈
 WINDOWS = 10
 # 최소 등장 횟수로 제한
@@ -22,7 +21,7 @@ WORKERS = 16
 # vector float 값은 32
 model_path = 'model/fasttext/fasttext'
 default_model = FastText.load(model_path)
-
+META_FILE_TSV = 'token/words.tsv'
 # 모델 저장
 
 
@@ -60,40 +59,21 @@ def get_doc_vector(doc, model=default_model):
 def recommand(user_id):
     sql = "select interest from users where id=%s"
     user_interest = db_execute(sql, [user_id])
+    print(user_interest)
     user_interest = get_doc_vector(tokenizer(user_interest[0]['interest']))
-    print(user_interest.shape)
     sql = "select id,vector from diaries"
     result = db_execute(sql)
     similar_res = []
     for doc in result:
-        from ast import literal_eval
         res = {}
-        # source = base64.decodestring(doc['vector'])
-        # q = np.frombuffer(doc['vector'].encode(), dtype=np.float32)
         q = np.fromstring(doc['vector'][1:-1], dtype=np.float32, sep=' ')
+        print(q.shape)
         res['similar'] = vec_sim(user_interest, q)
         res['id'] = doc['id']
         similar_res.append(res)
     print(similar_res)
 
-
-def insert_all_diary_vec():
-    sql = "select * from diaries"
-    result = db_execute(sql)
-    id_list = []
-    vector_list = []
-    for doc in result:
-        content = doc['title']+" "+doc['content']
-        source = get_doc_vector(tokenizer(content))
-        # source = base64.b64encode(source)
-        vector_list.append(source)
-        id_list.append(doc['id'])
-    sql = "update diaries set vector=%s where id=%s"
-    arg = zip(vector_list, id_list)
-    db_execute(sql, arg, True)
-    sql = "update diaries set train=1 where train=0"
-    db_execute(sql)
-    print("=======update all diary=========")
+# 다이어리 입력후 벡터 저장
 
 
 def insert_diary_vec(diary_id, title, content):
@@ -102,6 +82,15 @@ def insert_diary_vec(diary_id, title, content):
     vector = str(vector)
     sql = "update diaries set vector=%s where id=%s"
     db_execute(sql, (vector, diary_id))
+
+# 단어 저장
+
+
+def make_tsv(model=default_model, meta_file_tsv=META_FILE_TSV):
+    with open(meta_file_tsv, 'w', encoding='utf-8') as tsvfile:
+        writer = csv.writer(tsvfile, delimiter='\t')
+        for word in words:
+            writer.writerow([word])
 
 
 def first_train():
@@ -112,14 +101,26 @@ def first_train():
     model.save(model_path)
     model.train(words, total_examples=len(words), epochs=10)
 
+# test code
+# 다이어리 벡터 저장하기
 
-def insert_diary_vec_example(doc):
-    tokens = tokenizer(doc)
-    vector = get_doc_vector(tokens)
-    qw = vector.tobytes()
-    vector = np.frombuffer(qw, dtype=np.float32)
-    print(vector.dtype)
-    # add connection
+
+def insert_all_diary_vec():
+    sql = "select * from diaries "
+    result = db_execute(sql)
+    id_list = []
+    vector_list = []
+    for doc in result:
+        content = doc['title']+" "+doc['content']
+        source = get_doc_vector(tokenizer(content))
+        vector_list.append(source)
+        id_list.append(doc['id'])
+    sql = "update diaries set vector=%s where id=%s"
+    arg = zip(vector_list, id_list)
+    db_execute(sql, arg, True)
+    sql = "update diaries set train=1 where train=0"
+    db_execute(sql)
+    print("=======update all diary=========")
 
 
 # first_train()
