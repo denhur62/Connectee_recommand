@@ -6,27 +6,24 @@ from gensim import matutils
 from Tokenizer import tokenizer
 from database import db_execute
 import csv
-
+# vector float 값은 32
 # HyperParameter
 # 벡터 차원 수
 VEC_SIZE = 30
-# 연관 지을 윈도우 사이즈
 WINDOWS = 10
-# 최소 등장 횟수로 제한
 MIN_COUNT = 30
-# 모델 에포크
 EPOCH = 100
-# 병렬처리 워커수
 WORKERS = 16
-# vector float 값은 32
+
 model_path = 'model/fasttext/fasttext'
-default_model = FastText.load(model_path)
 META_FILE_TSV = 'token/words.tsv'
+default_model = FastText.load(model_path)
 # 모델 저장
 
 
-def model_save(model, path=model_path):
+def save_model(model, path=model_path):
     model.save(path)
+    print("Fasttext model saved")
 
 # 모델 로드
 
@@ -60,13 +57,16 @@ def recommand(user_id):
     sql = "select interest from users where id=%s"
     user_interest = db_execute(sql, [user_id])
     user_interest = get_doc_vector(tokenizer(user_interest[0]['interest']))
-    sql = "select id,vector from diaries"
+    sql = "select id,FTVector from diaries"
     result = db_execute(sql)
     similar_res = []
     for doc in result:
         res = {}
-        q = np.fromstring(doc['vector'][1:-1], dtype=np.float32, sep=' ')
-        res['similar'] = vec_sim(user_interest, q)
+        if len(doc['FTVector']) <= 2:
+            res['similar'] = -1
+        else:
+            q = np.fromstring(doc['FTVector'][1:-1], dtype=np.float32, sep=' ')
+            res['similar'] = vec_sim(user_interest, q)
         res['id'] = doc['id']
         similar_res.append(res)
     return similar_res
@@ -75,9 +75,13 @@ def recommand(user_id):
 
 def insert_diary_vec(diary_id, title, content):
     source = title + " " + content
-    vector = get_doc_vector(tokenizer(source))
+    content = tokenizer(source)
+    if not content:
+        vector = []
+    else:
+        vector = get_doc_vector(content)
     vector = str(vector)
-    sql = "update diaries set vector=%s where id=%s"
+    sql = "update diaries set FTVector=%s where id=%s"
     db_execute(sql, (vector, diary_id))
 
 # 추가 학습 단어 corpus 추가
@@ -87,7 +91,7 @@ def make_corpus(model=default_model):
     sql = "select title,content from diaries where train=0"
     res = db_execute(sql)
 
-    print("make corpus...")
+    print("make FT corpus...")
     corpus_list = []
     if not res:
         pass
@@ -148,10 +152,14 @@ def insert_all_diary_vec():
     vector_list = []
     for doc in result:
         content = doc['title']+" "+doc['content']
-        source = get_doc_vector(tokenizer(content))
+        content = tokenizer(content)
+        if not content:
+            source = '[]'
+        else:
+            source = str(get_doc_vector(content))
         vector_list.append(source)
         id_list.append(doc['id'])
-    sql = "update diaries set vector=%s where id=%s"
+    sql = "update diaries set FTVector=%s where id=%s"
     arg = zip(vector_list, id_list)
     db_execute(sql, arg, True)
     sql = "update diaries set train=1 where train=0"
@@ -160,6 +168,5 @@ def insert_all_diary_vec():
 
 
 # insert_diary_vec(
-#     2, "오늘은 즐거운 하루", "오늘 길가다가 귀여운 고양이를 봐서 기분이 좋아졌다. 앞으로도 이런 행복한 이들이 나에게도 있었으면 좋겠다 앞으로도 쭈욱욱 아 행복해 일기 일상 여행")
-# insert_all_diary_vec()
+    # 2, "오늘은 즐거운 하루", "오늘 길가다가 귀여운 고양이를 봐서 기분이 좋아졌다. 앞으로도 이런 행복한 이들이 나에게도 있었으면 좋겠다 앞으로도 쭈욱욱 아 행복해 일기 일상 여행")
 # recommand(1)
