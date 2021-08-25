@@ -1,107 +1,290 @@
-import numpy as np
-import pandas as pd
-import gensim
+from gensim.corpora.dictionary import Dictionary
+from gensim.models.ldamodel import LdaModel
 from gensim.test.utils import datapath
-from gensim import corpora, models
-from gensim.models.ldamulticore import LdaMulticore
-from Tokenizer import init_vocab_read
-# import pyLDAvis.gensim
-import matplotlib.pyplot as plt
+from gensim import matutils
+from ast import literal_eval
+from database import db_execute
+from Tokenizer import init_vocab_read, tokenizer
 import os
 import platform
 import multiprocessing as mp
-from multiprocessing import freeze_support
-
+import operator
 # HyperParameter
-WORKERS = 4
-NUM_TOPICS = 30
+NUM_TOPICS = 10
 PASSES = 30
-EVERY_POST_LIMIT = 20
-NAVER_TITLE_LIMIT = 5
-TOTAL_POST_LIMIT = 5
-ITERATION = 70
+ITERATION = 30
 MIN_COUNT = 30
-
+# 경로설정
 os_platform = platform.platform()
-model_path = os.getcwd()+'\\model\\LDA'
-dict_path = os.getcwd()+'\\dict\\LDA'
-# default_dict = corpora.Dictionary.load(dict_path)
-# default_lda = gensim.models.ldamodel.LdaModel.load(datapath(model_path))
-
+model_path = os.getcwd()+'\\model\\lda\\LDA'
+dict_path = os.getcwd()+'\\model\\lda\\dict\\dict'
+default_dict = dictionary = Dictionary.load(dict_path)
+default_model = model = LdaModel.load(datapath(model_path))
 # 모델 저장하기
 
 
 def save_model(model, dictionary, model_path=model_path, dict_path=dict_path):
     model.save(datapath(model_path))
     dictionary.save(dict_path)
-    print("model saved")
+    print("LDA model saved")
 
 # 모델 불러오기
 
 
 def load_model(model_path=model_path, dict_path=dict_path):
-    dictionary = corpora.Dictionary.load(dict_path)
-    lda = gensim.models.ldamodel.LdaModel.load(datapath(model_path))
-    print("loaded")
-    return lda, dictionary
+    dictionary = Dictionary.load(dict_path)
+    model = LdaModel.load(datapath(model_path))
+    print("LDA model loaded")
+    return model, dictionary
+
+
+def vec_sim(vec_A, vec_B):
+    return matutils.cossim(vec_A, vec_B)
+# corpus 생성
+
+
+def make_corpus(model=default_model, dictionary=default_dict):
+    sql = "select title,content from diaries where train=0"
+    res = db_execute(sql)
+
+    print("make LDA corpus...")
+    corpus_list = []
+    if not res:
+        pass
+    else:
+        for doc in res:
+            content = doc['title']+" "+doc['content']
+            corpus = tokenizer(content)
+            corpus_list.append(corpus)
+        dictionary.add_documents(corpus_list)
+        corpus = [dictionary.doc2bow(d) for d in corpus_list]
+        sql = "update diaries set train=1 where train=0"
+        db_execute(sql)
+    dictionary.filter_extremes(no_below=MIN_COUNT)
+    return corpus, dictionary
+
+# 다이어리에 토픽 추가
+
+
+def insert_topic(diary_id, title, content, model=default_model):
+    source = title + " " + content
+    corpus = tokenizer(source)
+    corpus = [dictionary.doc2bow(d) for d in [corpus]]
+    topic = model.get_document_topics(
+        bow=corpus[0], minimum_probability=0, per_word_topics=True)[-1]
+    if not topic or len(topic) == 1:
+        pass
+    else:
+        stopic = {}
+        for i in topic:
+            hap = 0
+            for j in i[1]:
+                hap += j[1]
+            stopic[i[0]] = hap
+            sdict = sorted(stopic.items(),
+                           key=operator.itemgetter(1), reverse=True)
+        # 최상위 2개
+        interest = dictionary[sdict[0][0]]+','+dictionary[sdict[1][0]]
+        sql = "update diaries set interest=%s where id=%s"
+        db_execute(sql, (interest, diary_id))
+
+# 다이어리 백터 추가 테스트 해야함
+
+
+def insert_diary_vec(diary_id, title, content, model=default_model, dictionary=default_dict):
+    source = title + " " + content
+    corpus = [dictionary.doc2bow(d)
+              for d in [tokenizer(source)]]
+    if not corpus:
+        vector = []
+    else:
+        vector = model[corpus[0]]
+    vector = str(vector)
+    sql = "update diaries set LDAVector=%s where id=%s"
+    db_execute(sql, (vector, diary_id))
+
+# 추천 시스템
+
+
+def recommand(user_id, model=default_model, dictionary=default_dict):
+    sql = "select interest from users where id=%s"
+    user_interest = db_execute(sql, [user_id])
+    corpus = [dictionary.doc2bow(d)
+              for d in [tokenizer(user_interest[0]['interest'])]]
+    user_interest = model[corpus[0]]
+    sql = "select id,LDAVector from diaries where userId!=%s and deletedAt is null"
+    result = db_execute(sql,[user_id])
+    similar_res = []
+    for doc in result:
+        res = {}
+        q = literal_eval(doc['LDAVector'])
+        res['similar'] = vec_sim(user_interest, q)
+        res['id'] = doc['id']
+        similar_res.append(res)
+    return similar_res
+
+
+def train(corpus, dictionary, update=False, num_topics=NUM_TOPICS, passes=PASSES,
+          iterations=ITERATION, model=default_model):
+    print("LDA Training...")
+    if update:
+        model.update(corpus)
+    else:
+        data = init_vocab_read()
+        dictionary = Dictionary(data)
+        corpus = [dictionary.doc2bow(d) for d in data]
+        model = LdaModel(
+            corpus,
+            num_topics=num_topics,
+            id2word=dictionary,
+            passes=passes,
+            iterations=iterations
+        )
+    return model, dictionary
 
 # 모델의 모든 토픽 정보 출력
 
 
-# def show_topics(model=default_lda, num_words=5):
-#     topics = model.print_topics(
-#         num_topics=-1,
-#         num_words=num_words)  # 토픽 단어 제한
-#     # 토픽 및 토픽에 대한 단어의 기여도
-#     for topic in topics:
-#         print(topic)
-#     return topics
+def show_topics(model=default_model, num_words=5):
+    topics = model.print_topics(
+        num_topics=-1,
+        num_words=num_words)  # 토픽 단어 제한
+    # 토픽 및 토픽에 대한 단어의 기여도
+    for topic in topics:
+        print(topic)
 
-# # 하나의 문서에 대하여 토픽 정보 예측
+# 다이어리 없는 경우 , 유저 없는 경우
+# 유저 없는 경우
+# 다이어리 없는 경우 체크 완료
 
-
-# def get_topics(doc, model=default_lda, dictionary=default_dict):
-#     df = pd.DataFrame({'text': [doc]})
-#     if str(type(doc)) == "<class 'list'>":
-#         tokenized_doc = df['text']
-#     else:
-#         tokenized_doc = df['text'].apply(lambda x: get_tk(x))
-#     corpus = [dictionary.doc2bow(text) for text in tokenized_doc]
-#     for topic_list in model[corpus]:
-#         temp = topic_list
-#         temp = sorted(topic_list, key=lambda x: (x[1]), reverse=True)
-#         break
-#     result = np.zeros(NUM_TOPICS)
-#     for idx, data in temp:
-#         result[idx] += data
-#     return result
-
-# # 해당 단어리스트가 딕셔너리에 내에 포함된 단어인지 검증
+# 감정 클릭시 토픽 변경
 
 
-# def is_valid_words(word_list, dict=default_dict):
-#     temp = dict.doc2idx(word_list)
-#     result = []
-#     for i in temp:
-#         if i == -1:
-#             result += [False]
-#         else:
-#             result += [True]
-#     return result
+def emotion_click(user_id, diary_id):
+    sql = "select interest from diaries where id=%s"
+    diary_topic = db_execute(sql, [diary_id])[0]['interest']
+    sql = "select interest from users where id=%s"
+    user_interest = db_execute(sql, [user_id])[0]['interest']
+    if not diary_topic:
+        pass
+    elif not user_interest:
+        sql = "update users set interest=%s where id=%s"
+        db_execute(sql, (diary_topic, user_id))
+    else:
+        user_interest = user_interest.split(',')
+        len_user = len(user_interest)
+        if len_user >= 4:
+            user_interest.pop(0)
+            if len_user == 5:
+                user_interest.pop(0)
+                user_interest += diary_topic.split(',')
+            else:
+                user_interest += diary_topic.split(',')
+        else:
+            user_interest += diary_topic.split(',')
+        user_interest = ",".join(user_interest)
+        sql = "update users set interest=%s where id=%s"
+        db_execute(sql, (user_interest, user_id))
+
+# 다이어리 보기만 한 경우
+
+
+def diary_click(user_id, diary_id):
+    sql = "select interest from diaries where id=%s"
+    diary_topic = db_execute(sql, [diary_id])[0]['interest']
+    sql = "select interest from users where id=%s"
+    user_interest = db_execute(sql, [user_id])[0]['interest']
+    if not diary_topic:
+        pass
+    elif not user_interest:
+        sql = "update users set interest=%s where id=%s"
+        db_execute(sql, (diary_topic, user_id))
+    else:
+        user_interest = user_interest.split(',')
+        len_user = len(user_interest)
+        if len_user == 5:
+            user_interest.pop(0)
+            user_interest += diary_topic.split(',')
+        else:
+            user_interest += diary_topic.split(',')
+        user_interest = ",".join(user_interest)
+        sql = "update users set interest=%s where id=%s"
+        db_execute(sql, (user_interest, user_id))
+# test code
+# 초기 학습
 
 
 def initTrain():
+    print("first train")
     data = init_vocab_read()
-    dictionary = corpora.Dictionary(data)
+    dictionary = Dictionary(data)
     corpus = [dictionary.doc2bow(d) for d in data]
-    model = models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary,
-                                     num_topics=9, random_state=1)
+    model = LdaModel(corpus=corpus, id2word=dictionary,
+                     num_topics=10, random_state=1)
     save_model(model, dictionary)
-    for t in model.show_topics():
-        print(t)
+
+# 다이어리 안에 백터 넣기
 
 
-# initTrain()
-model, dictionary = load_model()
-for t in model.show_topics():
-    print(t)
+def insert_all_diary_vec(model=default_model):
+    sql = "update diaries set train=0 where train=1"
+    db_execute(sql)
+    sql = "select * from diaries "
+    result = db_execute(sql)
+    id_list = []
+    vector_list = []
+    for doc in result:
+        content = doc['title']+" "+doc['content']
+        corpus = [dictionary.doc2bow(d)
+                  for d in [tokenizer(content)]]
+        vector_list.append(str(model[corpus[0]]))
+        id_list.append(doc['id'])
+    sql = "update diaries set LDAVector=%s where id=%s"
+    arg = zip(vector_list, id_list)
+    db_execute(sql, arg, True)
+    sql = "update diaries set train=1 where train=0"
+    db_execute(sql)
+    print("=======update all diary=========")
+
+
+def test_topic(model=default_model, dictionary=default_dict):
+    sql = "update diaries set train=0 where train=1"
+    db_execute(sql)
+    sql = "select title,content from diaries where train=0"
+    res = db_execute(sql)
+
+    corpus_list = []
+    if not res:
+        pass
+    else:
+        for doc in res:
+            content = doc['title']+" "+doc['content']
+            corpus = tokenizer(content)
+            corpus_list.append(corpus)
+        corpus = [dictionary.doc2bow(d) for d in corpus_list]
+    #sample -2
+    topic = model.get_document_topics(
+        bow=corpus[-3], minimum_probability=0, per_word_topics=True)
+    topic = topic[-1]
+    if not topic or len(topic) == 1:
+        pass
+    else:
+        stopic = {}
+        for i in topic:
+            hap = 0
+            for j in i[1]:
+                hap += j[1]
+            stopic[i[0]] = hap
+            sdict = sorted(stopic.items(),
+                           key=operator.itemgetter(1), reverse=True)
+        # 최상위 2개
+        interest = dictionary[sdict[0][0]]+','+dictionary[sdict[1][0]]
+        print(interest)
+
+
+#train([], [], update=False)
+# test_topic()
+# insert_all_diary_vec()
+# insert_topic(1, "오늘은 정말 즐거워", "즐겁다 리또")
+#insert_diary_vec(1, "", "")
+# recommand(1)
