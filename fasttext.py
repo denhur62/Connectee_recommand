@@ -55,14 +55,21 @@ def get_doc_vector(doc, model=default_model):
 
 def recommand(user_id):
     sql = "select interest from users where id=%s"
-    user_interest = db_execute(sql, [user_id])
-    user_interest = get_doc_vector(tokenizer(user_interest[0]['interest']))
-    sql = "select id,FTVector from diaries"
-    result = db_execute(sql)
+    user_interest = db_execute(sql, [user_id])[0]['interest']
+    if not user_interest:
+        user_interest = []
+    else:
+        user_interest = get_doc_vector(tokenizer(user_interest))
+    sql = """select id,FTVector 
+    from diaries where userId!=%s and deletedAt is null
+    and private=0"""
+    result = db_execute(sql, [user_id])
     similar_res = []
     for doc in result:
         res = {}
         if len(doc['FTVector']) <= 2:
+            res['similar'] = -1
+        elif type(user_interest) == list:
             res['similar'] = -1
         else:
             q = np.fromstring(doc['FTVector'][1:-1], dtype=np.float32, sep=' ')
@@ -70,6 +77,48 @@ def recommand(user_id):
         res['id'] = doc['id']
         similar_res.append(res)
     return similar_res
+
+
+def group_recommand(search=None):
+    if not search or not tokenizer(search):
+        result = {}
+        sql = "select a.id from Connectee.groups as a order by createdAt desc where deletedAt is null"
+        re = db_execute(sql)
+        temp = [i['id'] for i in re]
+        result['groups'] = temp
+        return result
+    search = get_doc_vector(tokenizer(search))
+    themes = {1: "취미", 2: "여행", 3: "공부", 4: "운동", 5: "맛집",
+              6: "영화", 7: "사랑", 8: "책", 9: "애완동물", 10: "고민"}
+    sql = """select a.id,a.title, a.description
+    from Connectee.groups as a where deletedAt is null"""
+    re = db_execute(sql)
+    result = []
+    for i in re:
+        dic = {}
+        dic['id'] = i['id']
+        source = i['title'] + " " + i['description']
+        group_id = i['id']
+        temp = ''
+        sql = "select GroupId,ThemeId from group_themes where GroupId=%s and deletedAt is null"
+        theme = db_execute(sql, [group_id])
+        if not theme:
+            pass
+        else:
+            for j in theme:
+                temp += ' '+themes[j['ThemeId']]
+            source += temp
+        vector = get_doc_vector(tokenizer(source))
+        if len(vector) <= 2 or type(vector) == list or not source:
+            dic['similar'] = -1
+        else:
+            dic['similar'] = vec_sim(search, vector)
+        result.append(dic)
+    result.sort(key=lambda x: x['similar'], reverse=True)
+    temp = [i['id'] for i in result]
+    return temp
+
+
 # 다이어리 입력후 벡터 저장
 
 
@@ -84,24 +133,23 @@ def insert_diary_vec(diary_id, title, content):
     sql = "update diaries set FTVector=%s where id=%s"
     db_execute(sql, (vector, diary_id))
 
-# 추가 학습 단어 corpus 추가
+# 추가 학습 단어 corpus 추가 테스트
 
 
 def make_corpus(model=default_model):
     sql = "select title,content from diaries where train=0"
     res = db_execute(sql)
 
-    print("make FT corpus...")
     corpus_list = []
     if not res:
+        print("there's no make FT corpus...")
         pass
     else:
+        print("make FT corpus...")
         for doc in res:
             content = doc['title']+" "+doc['content']
             corpus = tokenizer(content)
             corpus_list.append(corpus)
-        sql = "update diaries set train=1 where train=0"
-        db_execute(sql)
     return corpus_list
 
 
@@ -162,11 +210,8 @@ def insert_all_diary_vec():
     sql = "update diaries set FTVector=%s where id=%s"
     arg = zip(vector_list, id_list)
     db_execute(sql, arg, True)
-    sql = "update diaries set train=1 where train=0"
-    db_execute(sql)
     print("=======update all diary=========")
 
 
-# insert_diary_vec(
-    # 2, "오늘은 즐거운 하루", "오늘 길가다가 귀여운 고양이를 봐서 기분이 좋아졌다. 앞으로도 이런 행복한 이들이 나에게도 있었으면 좋겠다 앞으로도 쭈욱욱 아 행복해 일기 일상 여행")
+#insert_diary_vec(2, "", "")
 # recommand(1)

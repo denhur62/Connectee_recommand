@@ -2,7 +2,7 @@ import Fasttext
 import LDA
 
 
-def recommand(user_id):
+def recommand_diary(user_id):
     FT_recommand = Fasttext.recommand(user_id)
     LDA_recommand = LDA.recommand(user_id)
     result = []
@@ -12,9 +12,7 @@ def recommand(user_id):
         temp['score'] = FT_recommand[i]['similar']+LDA_recommand[i]['similar']
         result.append(temp)
     result.sort(key=lambda x: x['score'], reverse=True)
-    temp = []
-    for i in result:
-        temp.append(i['id'])
+    temp = [i['id'] for i in result]
     return temp
 
 
@@ -30,3 +28,7 @@ def click_emotion(user_id, diary_id):
 
 def click_diary(user_id, diary_id):
     LDA.diary_click(user_id, diary_id)
+
+
+def search_group(search):
+    return Fasttext.group_recommand(search)

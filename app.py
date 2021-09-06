@@ -12,6 +12,19 @@ def backgroundScheduler():
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(backgroundScheduler, 'interval', minutes=180)
 scheduler.start()
+
+app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False
+
+
+def backgroundScheduler():
+    FTtrain()
+    LDAtrain()
+
+
+scheduler = BackgroundScheduler(daemon=True)
+scheduler.add_job(backgroundScheduler, 'interval', minutes=180)
+scheduler.start()
 application = Flask(__name__)
 application.config['JSON_AS_ASCII'] = False
 
@@ -62,5 +75,5 @@ def vector():
 
 
 if __name__ == "__main__":
-    application.run(debug=True)
+    application.run(host='0.0.0.0',port=5000, debug=True )
     # app.run(host="127.0.0.1", port="5000", debug=True)

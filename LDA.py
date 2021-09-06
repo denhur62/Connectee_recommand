@@ -16,8 +16,13 @@ ITERATION = 30
 MIN_COUNT = 30
 # 경로설정
 os_platform = platform.platform()
-model_path = os.getcwd()+'\\model\\lda\\LDA'
-dict_path = os.getcwd()+'\\model\\lda\\dict\\dict'
+if os_platform.startswith("Windows"):
+    model_path = os.getcwd()+'\\model\\lda\\LDA'
+    dict_path = os.getcwd()+'\\model\\lda\\dict\\dict'
+else:
+    model_path = os.getcwd()+'/model/lda/LDA'
+    dict_path = os.getcwd()+'/model/lda/dict/dict'
+
 default_dict = dictionary = Dictionary.load(dict_path)
 default_model = model = LdaModel.load(datapath(model_path))
 # 모델 저장하기
@@ -50,7 +55,7 @@ def make_corpus(model=default_model, dictionary=default_dict):
     print("make LDA corpus...")
     corpus_list = []
     if not res:
-        pass
+        return '', ''
     else:
         for doc in res:
             content = doc['title']+" "+doc['content']
@@ -60,8 +65,8 @@ def make_corpus(model=default_model, dictionary=default_dict):
         corpus = [dictionary.doc2bow(d) for d in corpus_list]
         sql = "update diaries set train=1 where train=0"
         db_execute(sql)
-    dictionary.filter_extremes(no_below=MIN_COUNT)
-    return corpus, dictionary
+        dictionary.filter_extremes(no_below=MIN_COUNT)
+        return corpus, dictionary
 
 # 다이어리에 토픽 추가
 
@@ -88,7 +93,7 @@ def insert_topic(diary_id, title, content, model=default_model):
         sql = "update diaries set interest=%s where id=%s"
         db_execute(sql, (interest, diary_id))
 
-# 다이어리 백터 추가 테스트 해야함
+# 다이어리 백터 추가
 
 
 def insert_diary_vec(diary_id, title, content, model=default_model, dictionary=default_dict):
@@ -113,7 +118,7 @@ def recommand(user_id, model=default_model, dictionary=default_dict):
               for d in [tokenizer(user_interest[0]['interest'])]]
     user_interest = model[corpus[0]]
     sql = "select id,LDAVector from diaries where userId!=%s and deletedAt is null"
-    result = db_execute(sql,[user_id])
+    result = db_execute(sql, [user_id])
     similar_res = []
     for doc in result:
         res = {}
@@ -141,21 +146,6 @@ def train(corpus, dictionary, update=False, num_topics=NUM_TOPICS, passes=PASSES
             iterations=iterations
         )
     return model, dictionary
-
-# 모델의 모든 토픽 정보 출력
-
-
-def show_topics(model=default_model, num_words=5):
-    topics = model.print_topics(
-        num_topics=-1,
-        num_words=num_words)  # 토픽 단어 제한
-    # 토픽 및 토픽에 대한 단어의 기여도
-    for topic in topics:
-        print(topic)
-
-# 다이어리 없는 경우 , 유저 없는 경우
-# 유저 없는 경우
-# 다이어리 없는 경우 체크 완료
 
 # 감정 클릭시 토픽 변경
 
@@ -191,12 +181,14 @@ def emotion_click(user_id, diary_id):
 
 def diary_click(user_id, diary_id):
     sql = "select interest from diaries where id=%s"
-    diary_topic = db_execute(sql, [diary_id])[0]['interest']
-    sql = "select interest from users where id=%s"
-    user_interest = db_execute(sql, [user_id])[0]['interest']
+    diary_topic = db_execute(sql, [diary_id])
     if not diary_topic:
         pass
-    elif not user_interest:
+    else:
+        diary_topic = diary_topic[0]['interest']
+    sql = "select interest from users where id=%s"
+    user_interest = db_execute(sql, [user_id])[0]['interest']
+    if not user_interest:
         sql = "update users set interest=%s where id=%s"
         db_execute(sql, (diary_topic, user_id))
     else:
@@ -245,12 +237,22 @@ def insert_all_diary_vec(model=default_model):
     sql = "update diaries set train=1 where train=0"
     db_execute(sql)
     print("=======update all diary=========")
+# 모델의 모든 토픽 정보 출력
+
+
+def show_topics(model=default_model, num_words=5):
+    topics = model.print_topics(
+        num_topics=-1,
+        num_words=num_words)
+    # 토픽 및 토픽에 대한 단어의 기여도
+    for topic in topics:
+        print(topic)
+
+# test topic
 
 
 def test_topic(model=default_model, dictionary=default_dict):
-    sql = "update diaries set train=0 where train=1"
-    db_execute(sql)
-    sql = "select title,content from diaries where train=0"
+    sql = "select title,content from diaries where"
     res = db_execute(sql)
 
     corpus_list = []
