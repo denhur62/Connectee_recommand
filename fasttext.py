@@ -1,10 +1,9 @@
+from gensim import matutils
 from gensim.models import FastText
 import numpy as np
-from Tokenizer import init_vocab_read
 from numpy.linalg import norm
-from gensim import matutils
-from Tokenizer import tokenizer
-from database import db_execute
+from dataloader import tokenizer, init_vocab_read
+from model.database import db_execute
 import csv
 # vector float 값은 32
 # HyperParameter
@@ -78,15 +77,21 @@ def recommand(user_id):
         similar_res.append(res)
     return similar_res
 
+# 그룹 추천
+
 
 def group_recommand(search=None):
-    if not search or not tokenizer(search):
-        result = {}
-        sql = "select a.id from Connectee.groups as a order by createdAt desc where deletedAt is null"
-        re = db_execute(sql)
-        temp = [i['id'] for i in re]
-        result['groups'] = temp
-        return result
+    # 토크나이저 못할 경우 유사한 그룹만 추천
+    if not tokenizer(search):
+        serach_like = "%{}%".format(search)
+        sql = "select a.id from Connectee.groups as a where a.title like %s"
+        re = db_execute(sql, [serach_like])
+        if not re:
+            temp = []
+            return temp
+        else:
+            temp = [i['id'] for i in re]
+            return temp
     search = get_doc_vector(tokenizer(search))
     themes = {1: "취미", 2: "여행", 3: "공부", 4: "운동", 5: "맛집",
               6: "영화", 7: "사랑", 8: "책", 9: "애완동물", 10: "고민"}
@@ -98,21 +103,23 @@ def group_recommand(search=None):
         dic = {}
         dic['id'] = i['id']
         source = i['title'] + " " + i['description']
-        group_id = i['id']
         temp = ''
         sql = "select GroupId,ThemeId from group_themes where GroupId=%s and deletedAt is null"
-        theme = db_execute(sql, [group_id])
+        theme = db_execute(sql, [dic['id']])
         if not theme:
             pass
         else:
             for j in theme:
                 temp += ' '+themes[j['ThemeId']]
             source += temp
-        vector = get_doc_vector(tokenizer(source))
-        if len(vector) <= 2 or type(vector) == list or not source:
+        if not tokenizer(source):
             dic['similar'] = -1
         else:
-            dic['similar'] = vec_sim(search, vector)
+            vector = get_doc_vector(tokenizer(source))
+            if len(vector) <= 2 or type(vector) == list:
+                dic['similar'] = -1
+            else:
+                dic['similar'] = vec_sim(search, vector)
         result.append(dic)
     result.sort(key=lambda x: x['similar'], reverse=True)
     temp = [i['id'] for i in result]
@@ -211,7 +218,3 @@ def insert_all_diary_vec():
     arg = zip(vector_list, id_list)
     db_execute(sql, arg, True)
     print("=======update all diary=========")
-
-
-#insert_diary_vec(2, "", "")
-# recommand(1)
