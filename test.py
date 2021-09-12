@@ -1,7 +1,7 @@
 import pandas as pd
 from model.database import db_execute
 
-
+# private 및 자기 자신 다이어리 추천 안하게
 def get_click_comment():
     # clicks frame
     sql = "select * from clicks where deletedAt is null"
@@ -27,8 +27,6 @@ def get_click_comment():
                               columns=['diaryId'], values='emotionLevel')
     dq = pd.merge(dq_emotion, dq_diary, 'left', on=['userId', 'createdAt'])
     da = pd.concat([cf, dq]).fillna(0).sort_index()
-    print(da.shape)
     return da
 
 
-get_click_comment()

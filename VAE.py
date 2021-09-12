@@ -1,17 +1,16 @@
 import pandas as pd
-from model.database import db_execute
-from test import get_click_comment
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-default_paths = 'data/'
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
+from test import get_click_comment
+default_data_paths = 'data/'
+default_model_paths = 'model/vae/VAE.pkl'
 # Hyper Parameter
 BATCH_SIZE = 64
 EPOCHS = 100
-INPUT_SIZE = 12
-HIDDEN_SIZE = 3
 if torch.cuda.is_available():
     DEVICE = torch.device('cuda')
 else:
@@ -29,7 +28,7 @@ class CustomDataset(Dataset):
     def __len__(self):
         return len(self.x_data)
 
-    # idx에 맞는 데이터를 반환
+    # 어떠한 idx를 받았을 때 그에 맞는 데이터를 반환
     def __getitem__(self, idx):
         if self.y_data is None:
             x = torch.FloatTensor(self.x_data[idx])
@@ -43,8 +42,8 @@ class CustomDataset(Dataset):
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
-        self.fc1_1 = nn.Linear(INPUT_SIZE, HIDDEN_SIZE)
-        self.fc1_2 = nn.Linear(INPUT_SIZE, HIDDEN_SIZE)
+        self.fc1_1 = nn.Linear(12, 2)
+        self.fc1_2 = nn.Linear(12, 2)
         self.relu = nn.ReLU()
 
     def encode(self, x):
@@ -69,7 +68,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self):
         super(Decoder, self).__init__()
-        self.fc1 = nn.Linear(HIDDEN_SIZE, INPUT_SIZE)
+        self.fc1 = nn.Linear(2, 12)
         self.simoid = nn.Sigmoid()
 
     def forward(self, x):
@@ -79,7 +78,7 @@ class Decoder(nn.Module):
         return out
 
 
-def loadData(movie_paths=default_paths):
+def loadData(movie_paths=default_data_paths):
     movie = pd.read_csv(movie_paths + "ratings.csv")
     meta = pd.read_csv(movie_paths + 'movies_metadata.csv', low_memory=False)
     meta = meta.rename(columns={'id': 'movieId'})
@@ -102,7 +101,6 @@ def loss_function(recon_x, x, mu, log_var):
 
 
 def train(encoder, decoder, train_loader):
-    # 모델 저장하는 방법 구현
     encoder.train()
     decoder.train()
     train_loss = 0
@@ -138,19 +136,21 @@ def evaluate(encoder, decoder, train_loader):
 
     result = np.concatenate(result)
     return result
+def load_model(model_path=default_model_paths):
+    try :
+        encoder, decoder = torch.load(model_path)
+        print("VAE model loaded")
+        return encoder , decoder
+    except:
+        encoder = Encoder().to(DEVICE)
+        decoder = Decoder().to(DEVICE)
+        print("VAE model created")
+        return encoder , decoder
 
-
+# df = loadData(default_paths)
 df = get_click_comment()
-df = loadData()
 w_metrix = df.iloc[:, :].values
-try:
-    enocoder, decoder = torch.load('./model/vae/variational_autoencdoer.pkl')
-    print("VAE model loaded")
-except:
-    encoder = Decoder().to(DEVICE)
-    decoder = Decoder().to(DEVICE)
-    print("VAE model created")
-
+encoder, decoder = load_model()
 reconstruction_function = nn.MSELoss(size_average=False)
 parameters = list(encoder.parameters()) + list(decoder.parameters())
 optimizer = torch.optim.Adam(parameters, lr=0.0005)

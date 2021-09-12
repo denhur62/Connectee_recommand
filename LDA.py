@@ -1,18 +1,19 @@
+from gensim import corpora
 from gensim.corpora.dictionary import Dictionary
 from gensim.models.ldamodel import LdaModel
 from gensim.test.utils import datapath
 from gensim import matutils
 from ast import literal_eval
-from database import db_execute
-from Tokenizer import init_vocab_read, tokenizer
+from model.database import db_execute
+from dataloader import init_vocab_read, tokenizer
 import os
 import platform
 import multiprocessing as mp
 import operator
 # HyperParameter
 NUM_TOPICS = 10
-PASSES = 30
-ITERATION = 30
+PASSES = 50
+ITERATION = 40
 MIN_COUNT = 30
 # 경로설정
 os_platform = platform.platform()
@@ -43,6 +44,7 @@ def load_model(model_path=model_path, dict_path=dict_path):
     return model, dictionary
 
 
+# vec 유사도
 def vec_sim(vec_A, vec_B):
     return matutils.cossim(vec_A, vec_B)
 # corpus 생성
@@ -52,11 +54,12 @@ def make_corpus(model=default_model, dictionary=default_dict):
     sql = "select title,content from diaries where train=0"
     res = db_execute(sql)
 
-    print("make LDA corpus...")
     corpus_list = []
     if not res:
+        print("there's no make LDA corpus...")
         return '', ''
     else:
+        print("make LDA corpus...")
         for doc in res:
             content = doc['title']+" "+doc['content']
             corpus = tokenizer(content)
@@ -65,13 +68,13 @@ def make_corpus(model=default_model, dictionary=default_dict):
         corpus = [dictionary.doc2bow(d) for d in corpus_list]
         sql = "update diaries set train=1 where train=0"
         db_execute(sql)
-        dictionary.filter_extremes(no_below=MIN_COUNT)
-        return corpus, dictionary
+    dictionary.filter_extremes(no_below=MIN_COUNT)
+    return corpus, dictionary
 
 # 다이어리에 토픽 추가
 
-
-def insert_topic(diary_id, title, content, model=default_model):
+itle, content
+def insert_topic(diary_id, t, model=default_model):
     source = title + " " + content
     corpus = tokenizer(source)
     corpus = [dictionary.doc2bow(d) for d in [corpus]]
