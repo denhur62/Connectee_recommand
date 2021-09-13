@@ -5,9 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
-from test import get_click_comment
-default_data_paths = 'data/'
-default_model_paths = 'model/vae/VAE.pkl'
+from model.database import db_execute
+
+default_data_paths = 'model/vae/VAE.pkl'
 # Hyper Parameter
 BATCH_SIZE = 64
 EPOCHS = 100
@@ -42,8 +42,8 @@ class CustomDataset(Dataset):
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
-        self.fc1_1 = nn.Linear(12, 2)
-        self.fc1_2 = nn.Linear(12, 2)
+        self.fc1_1 = nn.Linear(13, 2)
+        self.fc1_2 = nn.Linear(13, 2)
         self.relu = nn.ReLU()
 
     def encode(self, x):
@@ -68,7 +68,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self):
         super(Decoder, self).__init__()
-        self.fc1 = nn.Linear(2, 12)
+        self.fc1 = nn.Linear(2, 13)
         self.simoid = nn.Sigmoid()
 
     def forward(self, x):
@@ -76,21 +76,6 @@ class Decoder(nn.Module):
         out = self.simoid(out)
 
         return out
-
-
-def loadData(movie_paths=default_data_paths):
-    movie = pd.read_csv(movie_paths + "ratings.csv")
-    meta = pd.read_csv(movie_paths + 'movies_metadata.csv', low_memory=False)
-    meta = meta.rename(columns={'id': 'movieId'})
-
-    movie['movieId'] = movie['movieId'].astype(str)
-    meta['movieId'] = meta['movieId'].astype(str)
-
-    movie = pd.merge(movie, meta[['movieId', 'original_title']], on='movieId')
-    movie['one'] = 1
-    df = movie.pivot_table(
-        index='userId', columns='original_title', values='one').fillna(0)
-    return df
 
 
 def loss_function(recon_x, x, mu, log_var):
@@ -136,33 +121,71 @@ def evaluate(encoder, decoder, train_loader):
 
     result = np.concatenate(result)
     return result
-def load_model(model_path=default_model_paths):
-    try :
-        encoder, decoder = torch.load(model_path)
-        print("VAE model loaded")
-        return encoder , decoder
+
+def load_data(data_path=default_data_paths):
+    df = pd.read_pickle(data_path)
+    print("VAE data loaded")
+    return df
+
+def save_data(df,data_path=default_data_paths):
+    df.to_pickle(data_path)
+    print("VAE data saved")
+
+def recommand(user_id):
+    df = load_data()
+    try:
+        la = df.xs(user_id,level=0,drop_level=False).sum()
+        dict_la=la.to_dict()
     except:
-        encoder = Encoder().to(DEVICE)
-        decoder = Decoder().to(DEVICE)
-        print("VAE model created")
-        return encoder , decoder
+        dict_la=dict()
+    return dict_la
+def get_click_comment():
+    # clicks frame
+    sql = """select * from clicks where deletedAt is null"""
+    re = db_execute(sql)
+    cf = pd.DataFrame(re)
+    cf['createdAt'] = cf['createdAt'].dt.strftime('%y-%m-%d')
+    cf['one'] = 1
+    cf = cf.groupby(['userId', 'createdAt', 
+    'diaryId', 'emotionType', 'emotionLevel'])['one'].sum().reset_index()
+    cf_emotion = pd.pivot_table(cf, index=['userId', 'createdAt'],
+                                columns=['emotionType'], values='emotionLevel')
+    cf_diary = pd.pivot_table(cf, index=['userId', 'createdAt'],
+                              columns=['diaryId'], values='one')
+    cf = pd.merge(cf_emotion, cf_diary, 'left', on=['userId', 'createdAt'])
+    # comments frame
+    sql = "select * from comments where deletedAt is null"
+    result = db_execute(sql)
+    dq = pd.DataFrame(result)
+    dq['createdAt'] = dq['updatedAt'].dt.strftime('%y-%m-%d')
+    dq_emotion = pd.pivot_table(dq, index=['userId', 'createdAt'],
+                                columns=['userEmotionType'], values='userEmotionLevel')
+    dq_diary = pd.pivot_table(dq, index=['userId', 'createdAt'],
+                              columns=['diaryId'], values='emotionLevel')
+    dq = pd.merge(dq_emotion, dq_diary, 'left', on=['userId', 'createdAt'])
+    da = pd.concat([cf, dq]).fillna(0).sort_index()
+    return da
 
-# df = loadData(default_paths)
-df = get_click_comment()
-w_metrix = df.iloc[:, :].values
-encoder, decoder = load_model()
-reconstruction_function = nn.MSELoss(size_average=False)
-parameters = list(encoder.parameters()) + list(decoder.parameters())
-optimizer = torch.optim.Adam(parameters, lr=0.0005)
-train_dataset = CustomDataset(w_metrix)
+# df = get_click_comment()
+# w_metrix = df.iloc[:, :].values
+# encoder = Encoder().to(DEVICE)
+# decoder = Decoder().to(DEVICE)
+# reconstruction_function = nn.MSELoss(size_average=False)
+# parameters = list(encoder.parameters()) + list(decoder.parameters())
+# optimizer = torch.optim.Adam(parameters, lr=0.0005)
+# train_dataset = CustomDataset(w_metrix)
 
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    drop_last=False)
+# train_loader = DataLoader(
+#     train_dataset,
+#     batch_size=BATCH_SIZE,
+#     shuffle=False,
+#     drop_last=False)
 
-for epoch in range(1, EPOCHS + 1):
-    train_loss = train(encoder, decoder, train_loader)
-result = evaluate(encoder, decoder, train_loader)
-print(result)
+# for epoch in range(1, EPOCHS + 1):
+#     train_loss = train(encoder, decoder, train_loader)
+# result = evaluate(encoder, decoder, train_loader)
+
+# df = pd.DataFrame(result,index=df.index,columns=df.columns)
+# save_data(df)
+
+
