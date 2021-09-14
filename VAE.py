@@ -40,10 +40,10 @@ class CustomDataset(Dataset):
 
 
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self,input,hidden):
         super(Encoder, self).__init__()
-        self.fc1_1 = nn.Linear(13, 2)
-        self.fc1_2 = nn.Linear(13, 2)
+        self.fc1_1 = nn.Linear(input, hidden)
+        self.fc1_2 = nn.Linear(input, hidden)
         self.relu = nn.ReLU()
 
     def encode(self, x):
@@ -66,9 +66,9 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self):
+    def __init__(self,input,hidden):
         super(Decoder, self).__init__()
-        self.fc1 = nn.Linear(2, 13)
+        self.fc1 = nn.Linear(hidden, input)
         self.simoid = nn.Sigmoid()
 
     def forward(self, x):
@@ -166,26 +166,29 @@ def get_click_comment():
     da = pd.concat([cf, dq]).fillna(0).sort_index()
     return da
 
-# df = get_click_comment()
-# w_metrix = df.iloc[:, :].values
-# encoder = Encoder().to(DEVICE)
-# decoder = Decoder().to(DEVICE)
-# reconstruction_function = nn.MSELoss(size_average=False)
-# parameters = list(encoder.parameters()) + list(decoder.parameters())
-# optimizer = torch.optim.Adam(parameters, lr=0.0005)
-# train_dataset = CustomDataset(w_metrix)
+df = get_click_comment()
+input=df.shape[1]
+hidden=input//4
+w_metrix = df.iloc[:, :].values
+encoder = Encoder(input,hidden).to(DEVICE)
+decoder = Decoder(input,hidden).to(DEVICE)
+reconstruction_function = nn.MSELoss(size_average=False)
+parameters = list(encoder.parameters()) + list(decoder.parameters())
+optimizer = torch.optim.Adam(parameters, lr=0.0005)
+train_dataset = CustomDataset(w_metrix)
 
-# train_loader = DataLoader(
-#     train_dataset,
-#     batch_size=BATCH_SIZE,
-#     shuffle=False,
-#     drop_last=False)
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=BATCH_SIZE,
+    shuffle=False,
+    drop_last=False)
 
-# for epoch in range(1, EPOCHS + 1):
-#     train_loss = train(encoder, decoder, train_loader)
-# result = evaluate(encoder, decoder, train_loader)
+for epoch in range(1, EPOCHS + 1):
+    train_loss = train(encoder, decoder, train_loader)
+result = evaluate(encoder, decoder, train_loader)
 
-# df = pd.DataFrame(result,index=df.index,columns=df.columns)
-# save_data(df)
+df = pd.DataFrame(result,index=df.index,columns=df.columns)
+print(df)
+save_data(df)
 
 
