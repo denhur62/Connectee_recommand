@@ -1,5 +1,4 @@
 from VAE import loss_function
-
 class Trainer():
 
     def __init__(self, encoder, decoder,optimizer,DEVICE):
