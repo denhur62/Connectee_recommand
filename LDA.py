@@ -68,13 +68,13 @@ def make_corpus(model=default_model, dictionary=default_dict):
         corpus = [dictionary.doc2bow(d) for d in corpus_list]
         sql = "update diaries set train=1 where train=0"
         db_execute(sql)
-    dictionary.filter_extremes(no_below=MIN_COUNT)
-    return corpus, dictionary
+        dictionary.filter_extremes(no_below=MIN_COUNT)
+        return corpus, dictionary
 
 # 다이어리에 토픽 추가
 
-itle, content
-def insert_topic(diary_id, t, model=default_model):
+
+def insert_topic(diary_id, title, content, model=default_model):
     source = title + " " + content
     corpus = tokenizer(source)
     corpus = [dictionary.doc2bow(d) for d in [corpus]]
@@ -158,53 +158,53 @@ def emotion_click(user_id, diary_id):
     diary_topic = db_execute(sql, [diary_id])[0]['interest']
     sql = "select interest from users where id=%s"
     user_interest = db_execute(sql, [user_id])[0]['interest']
-    if not diary_topic:
-        pass
-    elif not user_interest:
-        sql = "update users set interest=%s where id=%s"
-        db_execute(sql, (diary_topic, user_id))
-    else:
-        user_interest = user_interest.split(',')
-        len_user = len(user_interest)
-        if len_user >= 4:
-            user_interest.pop(0)
+    if diary_topic:
+        if not user_interest:
+            sql = "update users set interest=%s where id=%s"
+            db_execute(sql, (diary_topic, user_id))
+        else:
+            user_interest = user_interest.split(',')
+            len_user = len(user_interest)
+            if len_user >= 4:
+                user_interest.pop(0)
+                if len_user == 5:
+                    user_interest.pop(0)
+                    user_interest += diary_topic.split(',')
+                else:
+                    user_interest += diary_topic.split(',')
+            else:
+                user_interest += diary_topic.split(',')
+            user_interest = ",".join(user_interest)
+            sql = "update users set interest=%s where id=%s"
+            db_execute(sql, (user_interest, user_id))
+        
+    
+# 다이어리 보기만 한 경우
+
+def diary_click(user_id, diary_id):
+    sql = "select interest from diaries where id=%s"
+    diary_topic = db_execute(sql, [diary_id])
+    if diary_topic and diary_topic[0]['interest']:
+        print(diary_topic)
+        diary_topic = diary_topic[0]['interest']
+        sql = "select interest from users where id=%s"
+        user_interest = db_execute(sql, [user_id])[0]['interest']
+        
+        if not user_interest:
+            sql = "update users set interest=%s where id=%s"
+            db_execute(sql, (diary_topic, user_id))
+        else:
+            user_interest = user_interest.split(',')
+            len_user = len(user_interest)
             if len_user == 5:
                 user_interest.pop(0)
                 user_interest += diary_topic.split(',')
             else:
                 user_interest += diary_topic.split(',')
-        else:
-            user_interest += diary_topic.split(',')
-        user_interest = ",".join(user_interest)
-        sql = "update users set interest=%s where id=%s"
-        db_execute(sql, (user_interest, user_id))
-
-# 다이어리 보기만 한 경우
-
-
-def diary_click(user_id, diary_id):
-    sql = "select interest from diaries where id=%s"
-    diary_topic = db_execute(sql, [diary_id])
-    if not diary_topic:
-        pass
-    else:
-        diary_topic = diary_topic[0]['interest']
-    sql = "select interest from users where id=%s"
-    user_interest = db_execute(sql, [user_id])[0]['interest']
-    if not user_interest:
-        sql = "update users set interest=%s where id=%s"
-        db_execute(sql, (diary_topic, user_id))
-    else:
-        user_interest = user_interest.split(',')
-        len_user = len(user_interest)
-        if len_user == 5:
-            user_interest.pop(0)
-            user_interest += diary_topic.split(',')
-        else:
-            user_interest += diary_topic.split(',')
-        user_interest = ",".join(user_interest)
-        sql = "update users set interest=%s where id=%s"
-        db_execute(sql, (user_interest, user_id))
+            user_interest = ",".join(user_interest)
+            sql = "update users set interest=%s where id=%s"
+            db_execute(sql, (user_interest, user_id))
+        
 # test code
 # 초기 학습
 
@@ -251,45 +251,3 @@ def show_topics(model=default_model, num_words=5):
     for topic in topics:
         print(topic)
 
-# test topic
-
-
-def test_topic(model=default_model, dictionary=default_dict):
-    sql = "select title,content from diaries where"
-    res = db_execute(sql)
-
-    corpus_list = []
-    if not res:
-        pass
-    else:
-        for doc in res:
-            content = doc['title']+" "+doc['content']
-            corpus = tokenizer(content)
-            corpus_list.append(corpus)
-        corpus = [dictionary.doc2bow(d) for d in corpus_list]
-    #sample -2
-    topic = model.get_document_topics(
-        bow=corpus[-3], minimum_probability=0, per_word_topics=True)
-    topic = topic[-1]
-    if not topic or len(topic) == 1:
-        pass
-    else:
-        stopic = {}
-        for i in topic:
-            hap = 0
-            for j in i[1]:
-                hap += j[1]
-            stopic[i[0]] = hap
-            sdict = sorted(stopic.items(),
-                           key=operator.itemgetter(1), reverse=True)
-        # 최상위 2개
-        interest = dictionary[sdict[0][0]]+','+dictionary[sdict[1][0]]
-        print(interest)
-
-
-#train([], [], update=False)
-# test_topic()
-# insert_all_diary_vec()
-# insert_topic(1, "오늘은 정말 즐거워", "즐겁다 리또")
-#insert_diary_vec(1, "", "")
-# recommand(1)

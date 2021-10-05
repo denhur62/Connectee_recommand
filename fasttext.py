@@ -185,10 +185,10 @@ def train(corpus, update=False, model=default_model, vec_size=VEC_SIZE, windows=
                          epochs=EPOCH,
                          workers=workers)
     return model
+
+
 # test code
 # 처음 학습
-
-
 def first_train():
     words = init_vocab_read()
     model = FastText(words, window=1, min_count=2, workers=4, sg=1)
@@ -198,8 +198,6 @@ def first_train():
     model.train(words, total_examples=len(words), epochs=10)
 
 # 다이어리 벡터 저장하기
-
-
 def insert_all_diary_vec():
     sql = "select * from diaries "
     result = db_execute(sql)
