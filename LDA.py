@@ -10,11 +10,15 @@ import os
 import platform
 import multiprocessing as mp
 import operator
+
+
 # HyperParameter
 NUM_TOPICS = 10
 PASSES = 50
 ITERATION = 40
 MIN_COUNT = 30
+
+
 # 경로설정
 os_platform = platform.platform()
 if os_platform.startswith("Windows"):
@@ -26,17 +30,16 @@ else:
 
 default_dict = dictionary = Dictionary.load(dict_path)
 default_model = model = LdaModel.load(datapath(model_path))
+
+
 # 모델 저장하기
-
-
 def save_model(model, dictionary, model_path=model_path, dict_path=dict_path):
     model.save(datapath(model_path))
     dictionary.save(dict_path)
     print("LDA model saved")
 
+
 # 모델 불러오기
-
-
 def load_model(model_path=model_path, dict_path=dict_path):
     dictionary = Dictionary.load(dict_path)
     model = LdaModel.load(datapath(model_path))
@@ -47,9 +50,9 @@ def load_model(model_path=model_path, dict_path=dict_path):
 # vec 유사도
 def vec_sim(vec_A, vec_B):
     return matutils.cossim(vec_A, vec_B)
+
+
 # corpus 생성
-
-
 def make_corpus(model=default_model, dictionary=default_dict):
     sql = "select title,content from diaries where train=0"
     res = db_execute(sql)
@@ -71,9 +74,8 @@ def make_corpus(model=default_model, dictionary=default_dict):
         dictionary.filter_extremes(no_below=MIN_COUNT)
         return corpus, dictionary
 
+
 # 다이어리에 토픽 추가
-
-
 def insert_topic(diary_id, title, content, model=default_model):
     source = title + " " + content
     corpus = tokenizer(source)
@@ -96,9 +98,8 @@ def insert_topic(diary_id, title, content, model=default_model):
         sql = "update diaries set interest=%s where id=%s"
         db_execute(sql, (interest, diary_id))
 
+
 # 다이어리 백터 추가
-
-
 def insert_diary_vec(diary_id, title, content, model=default_model, dictionary=default_dict):
     source = title + " " + content
     corpus = [dictionary.doc2bow(d)
@@ -111,9 +112,8 @@ def insert_diary_vec(diary_id, title, content, model=default_model, dictionary=d
     sql = "update diaries set LDAVector=%s where id=%s"
     db_execute(sql, (vector, diary_id))
 
+
 # 추천 시스템
-
-
 def recommand(user_id, model=default_model, dictionary=default_dict):
     sql = "select interest from users where id=%s"
     user_interest = db_execute(sql, [user_id])
@@ -132,6 +132,7 @@ def recommand(user_id, model=default_model, dictionary=default_dict):
     return similar_res
 
 
+#학습 
 def train(corpus, dictionary, update=False, num_topics=NUM_TOPICS, passes=PASSES,
           iterations=ITERATION, model=default_model):
     print("LDA Training...")
@@ -150,9 +151,8 @@ def train(corpus, dictionary, update=False, num_topics=NUM_TOPICS, passes=PASSES
         )
     return model, dictionary
 
+
 # 감정 클릭시 토픽 변경
-
-
 def emotion_click(user_id, diary_id):
     sql = "select interest from diaries where id=%s"
     diary_topic = db_execute(sql, [diary_id])[0]['interest']
@@ -180,7 +180,6 @@ def emotion_click(user_id, diary_id):
         
     
 # 다이어리 보기만 한 경우
-
 def diary_click(user_id, diary_id):
     sql = "select interest from diaries where id=%s"
     diary_topic = db_execute(sql, [diary_id])
@@ -207,8 +206,6 @@ def diary_click(user_id, diary_id):
         
 # test code
 # 초기 학습
-
-
 def initTrain():
     print("first train")
     data = init_vocab_read()
@@ -219,8 +216,6 @@ def initTrain():
     save_model(model, dictionary)
 
 # 다이어리 안에 백터 넣기
-
-
 def insert_all_diary_vec(model=default_model):
     sql = "update diaries set train=0 where train=1"
     db_execute(sql)
@@ -240,14 +235,8 @@ def insert_all_diary_vec(model=default_model):
     sql = "update diaries set train=1 where train=0"
     db_execute(sql)
     print("=======update all diary=========")
-# 모델의 모든 토픽 정보 출력
 
 
-def show_topics(model=default_model, num_words=5):
-    topics = model.print_topics(
-        num_topics=-1,
-        num_words=num_words)
-    # 토픽 및 토픽에 대한 단어의 기여도
-    for topic in topics:
-        print(topic)
+
+
 
