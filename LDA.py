@@ -158,6 +158,8 @@ def emotion_click(user_id, diary_id):
     diary_topic = db_execute(sql, [diary_id])[0]['interest']
     sql = "select interest from users where id=%s"
     user_interest = db_execute(sql, [user_id])[0]['interest']
+    print(diary_topic)
+    print(user_interest)
     if diary_topic:
         if not user_interest:
             sql = "update users set interest=%s where id=%s"
@@ -184,8 +186,7 @@ def diary_click(user_id, diary_id):
     sql = "select interest from diaries where id=%s"
     diary_topic = db_execute(sql, [diary_id])
     if diary_topic and diary_topic[0]['interest']:
-        print(diary_topic)
-        diary_topic = diary_topic[0]['interest']
+        diary_topic = diary_topic[0]['interest'].split(',')[0]
         sql = "select interest from users where id=%s"
         user_interest = db_execute(sql, [user_id])[0]['interest']
         
@@ -197,9 +198,9 @@ def diary_click(user_id, diary_id):
             len_user = len(user_interest)
             if len_user == 5:
                 user_interest.pop(0)
-                user_interest += diary_topic.split(',')
+                user_interest.append(diary_topic)
             else:
-                user_interest += diary_topic.split(',')
+                user_interest.append(diary_topic)
             user_interest = ",".join(user_interest)
             sql = "update users set interest=%s where id=%s"
             db_execute(sql, (user_interest, user_id))
