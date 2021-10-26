@@ -1,5 +1,5 @@
 import MySQLdb
-from config import lnfo
+from .config import lnfo
 
 
 def db_execute(query, arg=None, many=False):

@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 default_data_paths = 'model/vae/VAE.pkl'
+
 # Hyper Parameter
 BATCH_SIZE = 64
 EPOCHS = 100
@@ -74,17 +74,15 @@ def evaluate(encoder, decoder, train_loader):
 
 def load_data(data_path=default_data_paths):
     df = pd.read_pickle(data_path)
-    print("VAE data loaded")
     return df
 
 def save_data(df,data_path=default_data_paths):
     df.to_pickle(data_path)
-    print("VAE data saved")
 
 def recommand(user_id):
     df = load_data()
     try:
-        la = df.xs(user_id,level=0,drop_level=False).sum()
+        la = df.xs(user_id,level=0,drop_level=False).mean()
         dict_la=la.to_dict()
     except:
         dict_la=dict()

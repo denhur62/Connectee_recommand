@@ -1,13 +1,15 @@
 from flask import Flask, jsonify, abort, request
-import API
-from train import FTtrain, LDAtrain
+from train import FTtrain, LDAtrain, VAEtrain
+import Fasttext
+import LDA
+import predict
 from apscheduler.schedulers.background import BackgroundScheduler
 
-
+# 3 time learning
 def backgroundScheduler():
     FTtrain()
     LDAtrain()
-
+    VAEtrain()
 
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(backgroundScheduler, 'interval', minutes=180)
@@ -28,46 +30,45 @@ scheduler.start()
 application = Flask(__name__)
 application.config['JSON_AS_ASCII'] = False
 
-
-@application.route('/')  # 접속하는 url
+# test url
+@application.route('/')  
 def index():
     return 'hello world'
 
-# 감정 클릭 시 토픽 추가
-
-
+# click-emotion and topic add
 @application.route('/click-emotion/<userId>/<diaryId>')
 def click_emotion(userId=None, diaryId=None):
-    API.click_emotion(userId, diaryId)
+    LDA.emotion_click(userId, diaryId)
     return '', 202
 
-# 다이어리 클릭 시 토픽 추가
-
-
+# click-diary and topic add
 @application.route('/click-diary/<userId>/<diaryId>')
 def click_diary(userId=None, diaryId=None):
-    API.click_diary(userId, diaryId)
+    LDA.diary_click(userId, diaryId)
     return '', 202
+
 # recommand
-
-
 @application.route('/recommand/<userId>')
-def recommand(userId):
-    result = API.recommand(userId)
+def recommand_diary(userId):
+    result = predict.recommand_diary(userId)
     return jsonify({'diaries': result})
 
-# 다이어리 생성시,수정 시  두 개 벡터 추가 및 토픽 추가 테스트 해야함
-
-
-@application.route('/diary/create', methods=['POST'])
-def vector():
+# search group
+@application.route('/group-recommand', methods=['POST'])
+def search_group():
     params = request.get_json()
-    API.vector(params['diary_id'], params['title'], params['content'])
+    result = Fasttext.group_recommand(params['search'])
+    return jsonify({'groups': result})
+
+# created diary add LDA,Fasttext vector
+@application.route('/diary/create', methods=['POST'])
+def insert_vector():
+    params = request.get_json()
+    predict.insert_vector(params['diary_id'],
+                          params['title'], params['content'])
     return '', 202
 
 # white list
-
-
 # @application.before_request
 # def limit_remote_addr():
 #     if request.remote_addr != '127.0.1.1':
@@ -75,5 +76,4 @@ def vector():
 
 
 if __name__ == "__main__":
-    application.run(host='0.0.0.0',port=5000, debug=True )
-    # app.run(host="127.0.0.1", port="5000", debug=True)
+    application.run(host='0.0.0.0', port=5000, debug=True)

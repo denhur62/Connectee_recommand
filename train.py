@@ -67,3 +67,4 @@ def VAEtrain():
     df = pd.DataFrame(result,index=df.index,columns=df.columns)
     VAE.save_data(df)   
     
+
