@@ -2,7 +2,7 @@
 
 ## 커넥티 추천 방식
 
-content-based 기반 추천 시스템인 **LDA** 와 **FASTTEXT**를 통한 코사인 유사도 및 collaborative 기반 추천시스템이며 감정을 통한 추천을 하기 위한 **VAE**의 결과값을 통해 사용자에게 다이어리를 추천한다. 
+content-based 기반 추천 시스템인 **LDA** 와 **FASTTEXT**를 통한 코사인 유사도 및 collaborative 기반 추천시스템이며 감정 추천을 하기 위한 **VAE**의 결과값을 통해 사용자에게 다이어리를 추천한다. 
 
 
 
